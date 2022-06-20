@@ -316,7 +316,10 @@ ploidyRecentre <- function (cn.list, skipcol, multi_cn) {
     
     if ( multi_cn == TRUE ) { # if there is multregion sampling
       if ( mean(colMeans(wd, na.rm = TRUE)) >= 2.8 ) {
-        cn.list[[i]] <- cbind(cn.list[[i]][,c(1:skipcol)] ,cn.list[[i]][,-c(1:skipcol)] - 1)
+        distance <- ceiling(abs(2.8- (mean(colMeans(wd, na.rm = TRUE)))))
+        print(paste(i,mean(colMeans(wd, na.rm = TRUE)),distance))
+        print(paste(i,"/",length(cn.list)))
+        cn.list[[i]] <- cbind(cn.list[[i]][,c(1:skipcol)] , cn.list[[i]][,-c(1:skipcol)] - distance)
       }
       else {
         cn.list[[i]] <- cn.list[[i]]
@@ -325,7 +328,9 @@ ploidyRecentre <- function (cn.list, skipcol, multi_cn) {
     
     else if ( multi_cn == FALSE ){ # if only a single sample per patient
       if ( mean(wd, na.rm = TRUE) >= 2.8 ) {
-        cn.list[[i]] <- cbind(cn.list[[i]][,c(1:skipcol)] ,cn.list[[i]][,-c(1:skipcol)] - 1)
+        distance <- ceiling(abs(2.8- (mean(wd, na.rm = TRUE))))
+        print(paste(i,"/",length(cn.list)))
+        cn.list[[i]] <- cbind(cn.list[[i]][,c(1:skipcol)] , cn.list[[i]][,-c(1:skipcol)] - distance)
       }
       else {
         cn.list[[i]] <- cn.list[[i]]
@@ -506,6 +511,7 @@ newAlignBins <- function(bins, cn.list) {
   
   # Bin incoming dataset (cn.list)
   for ( p in 1:length(cnBinned.list) ) {
+    print(paste(p,"/",length(cnBinned.list)))
     # per bin
     for ( b in 1:nrow(cnBinned.list[[p]]) ) {
       chr <- cnBinned.list[[p]]$chr[b]

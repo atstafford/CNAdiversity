@@ -1,11 +1,9 @@
 #NORMAL-------------------------------------------------------------------------
-#clusters <- hg19predictors$cluster
-#bins <- sig.hclust$bin[which(sig.hclust$cluster %in% clusters)]
 
 # Pull bins that are individually predictive
 GO <- rbind(uniReg.out.list[[2]][which(uniReg.out.list[[2]]$sig=='sig'),],
             uniReg.out.list[[3]][which(uniReg.out.list[[3]]$sig=='sig'),])
-#GO <- GO[which(GO$bin %in% bins),]
+
 
 # Gene anno function needs to have cols: bin | chr | start | stop
 GO <- merge(GO, car.info$start.stop)
@@ -65,9 +63,28 @@ simMatrix_all <- calculateSimMatrix(x$ID, orgdb="org.Hs.eg.db", ont = c("BP","MF
 scores <- data.frame(ID = rownames(GOanno[which(GOanno$p.abs <= 0.05),]),  scores = GOanno$p.abs[which(GOanno$p.abs <= 0.05)])
 scores <- setNames(-log10(scores$scores), scores$ID)
 reducedTerms_all <- reduceSimMatrix(simMatrix_all, threshold=0.6, orgdb="org.Hs.eg.db", scores = scores)
-jpeg('tempfig.jpeg', width = 1000, height = 1000)
-treemapPlot(reducedTerms_all)
+
+x <- data.frame(tapply(reducedTerms_all$score, reducedTerms_all$parentTerm, FUN=sum))
+include <- rownames(x)[which(x$tapply.reducedTerms_all.score..reducedTerms_all.parentTerm..FUN...sum.>10)]
+adjusted <- reducedTerms_all
+adjusted <- adjusted[which(adjusted$parentTerm %in% include),]
+
+
+jpeg('tempfig.jpeg', width = 1500, height = 1500)
+treemapPlot(adjusted, size = "score", fontsize.labels = 30, overlap.labels = 1, inflate.labels = T)
+#treemap::treemap(reducedTerms_all, index=c("parentTerm", "term"), 
+#                 fontsize.labels = 10,overlap.labels = 0, force.print.labels = F, 
+#lowerbound.cex.labels = 1, inflate.labels = T)
+#                 vSize=size, 
+                 #type="index", title="", 
+                 #palette=gg_color_hue(length(unique(reducedTerms$parent))),
+                 #fontcolor.labels=c("#FFFFFFDD", "#00000080"), bg.labels=0, border.col="#00000080"
+      #           )
 dev.off()
+
+
+
+
 
 # save
 saveRDS(gene.anno, "~/Documents/CNA/Data/gene.anno.rds")

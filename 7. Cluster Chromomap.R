@@ -100,9 +100,39 @@ link$ann1[which(link$ann1==135)] <- 2313
 link$ann2[which(link$ann2==137)] <- 2331
 
 annotation2 <- annotation2[c(1,2,3,4,7,5)]
-#x <- c(rep(c("#FF6666","#330066"),76),"#FF6666")
-x <- c("#339900", alpha("#339900", 0.1), "#660066", alpha("#660066", 0.1))
 x <- c("#cccccc", "#666666", "#ff9933", "#993366")
+
+
+#lung
+annotation2$x <- NA
+annotation2$x[which((annotation2$breakpoint %% 2) != 0)] <- "1insig"
+annotation2$x[which((annotation2$breakpoint %% 2) == 0)] <- "2insig"
+
+link <- data.frame(matrix(unlist(list),byrow = T,ncol = 2), check.names = F)
+link <- data.frame(ann1=link$`1`, 1 , ann2=link$`2`, 1) 
+#link <- link[-c(2,12), ] #small=19,132
+
+link$ann1[which(link$ann1==4)] <- 125
+link$ann2[which(link$ann2==6)] <- 131
+link$ann1[which(link$ann1==15)] <- 282
+link$ann2[which(link$ann1==16)] <- 208
+link$ann1[which(link$ann2==17)] <- 210
+link$ann2[which(link$ann2==18)] <- 216
+link$ann2[which(link$ann1==53)] <- 1429
+link$ann2[which(link$ann2==55)] <- 1435
+link$ann2[which(link$ann1==62)] <- 1874
+link$ann2[which(link$ann2==64)] <- 1900
+link$ann2[which(link$ann1==69)] <- 2105
+link$ann2[which(link$ann2==71)] <- 2108
+link$ann2[which(link$ann1==103)] <- 2395
+link$ann2[which(link$ann1==104)] <- 2397
+link$ann2[which(link$ann2==105)] <- 2398
+link$ann2[which(link$ann2==106)] <- 2401
+link$ann2[which(link$ann1==112)] <- 2566
+link$ann2[which(link$ann2==114)] <- 2588
+
+annotation2 <- annotation2[c(1,2,3,4,7,5)]
+x <- c("#cccccc", "#666666")
 
 chromoMap(list(hg19), list(annotation2),
           #cna
@@ -117,6 +147,10 @@ chromoMap(list(hg19), list(annotation2),
           canvas_width = 800, 
           canvas_height = 500,
           chr_color = c("#CCCCCC"),
-          chr_width = 10, chr_length = 6, ch_gap = 4, 
+          chr_width = 10, chr_length = 4, ch_gap = 4, 
           #y_chr_scale = -30, top_margin = -20,
           legend = F)
+
+jpeg('tempfig.jpeg', width = 1000, height = 1000)
+plot
+dev.off()

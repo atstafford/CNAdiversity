@@ -2,6 +2,7 @@
 
 beta <- beta_52backrem
 
+#USING CROSS -------
 # Transpose as input table requires cols=bins
 input <- t(testcnBinned[,-c(1:4)]) 
 
@@ -24,11 +25,66 @@ predictedIth_test$type <- 'test'
 reg <- lm(actual~predicted, data=predictedIth_test)
 summary(reg)
 
+saveRDS(predictedIth_test, "~/Documents/CNA/Data/predictedIth_test.rds")
+
 # Add two labels for plot
-ggplot(data = predictedIth_test, aes(x = actual, y = predicted, label=sample)) +
+plot <- ggplot(data = predictedIth_test, aes(x = actual, y = predicted, label=sample)) +
   geom_line(aes(group = patient), size=0.2, colour = "#003366") +
   geom_point(fill = "#003366", colour = "#003366", size = 6) +
-  geom_text() +
+  #geom_text() +
+  geom_line(aes(x = actual, y = actual), linetype = "dashed") +
+  xlab("Patient CNA diversity") +
+  ylab("Patient CNA diversity (predicted)") +
+  #xlim(0,0.5) +
+  ylim(0,1) +
+  theme(plot.margin = unit(c(t=0,r=0,b=0,l=0), "cm"),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size = 0.5),
+        axis.title = element_text(size=24, colour='black'),
+        axis.text = element_text(size=24, colour='black'),
+        legend.position = "none") +
+  geom_smooth(method = 'lm') +
+  ggpmisc::stat_poly_eq(formula = y ~ x, 
+                        aes(label = paste(stat(adj.rr.label), "*\", \"*", stat(p.value.label), "*\"\"", sep = "")),
+                        parse = TRUE, label.x = 'right', label.y = 'top', size=8) 
+
+jpeg('tempfig.jpeg', width = 750, height = 750)
+plot
+dev.off()
+
+#USING TRACERX-------
+# Transpose as input table requires cols=bins
+input <- t(tracerxBinned[,-c(1:3)]) 
+
+# Convert matrix data to character then factor
+input <- data.frame(apply(input, 2, as.character),check.names = FALSE) 
+input <- data.frame(lapply(input, factor, levels=c(2,1,3), labels=c('diploid','loss','gain')), check.names = FALSE)
+
+# Dummy the relevant cols
+input <- input[ ,which(colnames(input) %in% hg19predictors$bin)]
+
+#bin 2374 missing, so use 2375
+#TCGA.input$`2374` <- TCGA.input$`2375`
+#TCGA.input <- TCGA.input[,-which(colnames(TCGA.input)=="2375")]
+
+names(input) = paste("bin_", names(input), sep="")
+input <- dummy_cols(input, remove_selected_columns = TRUE, remove_first_dummy = TRUE)
+rownames(input) <- colnames(tracerxBinned[,-c(1:3)])
+
+# Predict
+predictedIth_tracerx <- data.frame(predicted = predict(beta, input))
+
+# Enter actual and predicted ITH into a comparative dataframe
+predictedIth_tracerx <- data.frame(cbind(actualIth_tracerx, predictedIth_tracerx))
+predictedIth_tracerx$type <- 'tracerx'
+reg <- lm(actual~predicted, data=predictedIth_tracerx)
+summary(reg)
+
+# Add two labels for plot
+ggplot(data = predictedIth_tracerx, aes(x = actual, y = predicted, label=sample)) +
+  geom_line(aes(group = patient), size=0.2, colour = "#003366") +
+  geom_point(fill = "#003366", colour = "#003366", size = 6) +
+  #geom_text() +
   geom_line(aes(x = actual, y = actual), linetype = "dashed") +
   xlab("Patient CNA diversity") +
   ylab("Patient CNA diversity (predicted)") +
@@ -45,9 +101,6 @@ ggplot(data = predictedIth_test, aes(x = actual, y = predicted, label=sample)) +
                         aes(label = paste(stat(adj.rr.label), "*\", \"*", stat(p.value.label), "*\"\"", sep = "")),
                         parse = TRUE, label.x = 'right', label.y = 'top', size=8) 
 
-jpeg('tempfig.jpeg', width = 1000, height = 1000)
-plot
-dev.off()
 
 # BOOTSTRAP on random 27 bins----------------------------------------------------------------------
 # Are these 33 bins actually special? try random 33 from candidate and assess model
@@ -103,22 +156,33 @@ loo <- data.frame(apply(loo, 2, as.character), check.names = FALSE)
 loo <- data.frame(lapply(loo, factor, levels=c(2,1,3), labels=c('diploid','loss','gain')), check.names = FALSE)
 rownames(loo) <- c(car.info$sampleIDs, val.info$sampleIDs)
 loo <- loo[, which(colnames(loo) %in% hg19predictors$bin)]
-
 loo <- cbind(c(actualIth_train$actual, actualIth_test$actual), loo)
 names(loo) = paste("bin_", names(loo), sep="")
 loo = loo %>%
   mutate(across(everything(), as.character))
-
 loo <- dummy_cols(loo[-1], remove_selected_columns = TRUE, remove_first_dummy = TRUE) 
 loo$bin_ITH <- c(actualIth_train$actual, actualIth_test$actual)
 rownames(loo) <- c(car.info$sampleIDs, val.info$sampleIDs)
+
+loo <- rbind(t(car.raw[,-c(1:3)]))
+loo <- data.frame(apply(loo, 2, as.character), check.names = FALSE)
+loo <- data.frame(lapply(loo, factor, levels=c(2,1,3), labels=c('diploid','loss','gain')), check.names = FALSE)
+rownames(loo) <- c(car.info$sampleIDs)
+loo <- loo[, which(colnames(loo) %in% hg19predictors$bin)]
+loo <- cbind(c(actualIth_train$actual), loo)
+names(loo) = paste("bin_", names(loo), sep="")
+loo = loo %>%
+  mutate(across(everything(), as.character))
+loo <- dummy_cols(loo[-1], remove_selected_columns = TRUE, remove_first_dummy = TRUE) 
+loo$bin_ITH <- c(actualIth_train$actual)
+rownames(loo) <- c(car.info$sampleIDs)
 
 set.seed(123456)
 pR2 <- list()
 RMSE <- list()
 MAE <- list()
-foreach(i = 1:235) %do% {
-  input <- sample_n(loo, 234)
+foreach(i = 1:162) %do% {
+  input <- sample_n(loo, 161)
   data <- data.frame(predicted=predict(beta_52backrem, input), actual=input$bin_ITH)
   data <- na.omit(data)
   
@@ -141,19 +205,16 @@ plot(beta_back,5) #Half-normal plot of residuals
 plot(beta_back,6) #Predicted vs observed values
 
 # predicted corr with other?----------------------------------------------------
-beta <- beta_52backrem
-multiReg.in <- multiReg.in_52backrem
-
-actualIth <- data.frame(lapply(data.frame(car.diversity$pic.frac), rep, car.info$sampPerPatient))
-predictedIth <- predict(beta, multiReg.in) 
-x <- cbind(actualIth, predictedIth)
-x$sample <- car.info$sampleIDs
-x$patient <- sub('\\..*', '', x$sample)
+x <- predictedIth_train
+y <- car.clonality$patientClo
 y <- (car.clonality$patientClo$subclonal/car.clonality$patientClo$CNA)
 y <- data.frame(ITH=lapply(data.frame(ITH=y), rep, car.info$sampPerPatient))
 x$pcsubclonal <- y$ITH
 
-ggplot(data = x, aes(x = predictedIth, y = pcsubclonal)) +
+y <- car.diversity$pga$prop.aneu
+x$pga <- y
+
+ggplot(data = x, aes(x = predicted, y = pcsubclonal)) +
   geom_line(aes(group = patient), size=0.2, colour = "#003366") +
   geom_point(fill = "#003366", colour = "#003366", size = 6) +
   theme(plot.margin = unit(c(t=0,r=0,b=0,l=0), "cm"),
@@ -161,11 +222,70 @@ ggplot(data = x, aes(x = predictedIth, y = pcsubclonal)) +
         axis.line = element_line(colour = "black", size = 0.5),
         axis.title = element_text(size=24, colour='black'),
         axis.text = element_text(size=24, colour='black'),
-        legend.position = "none") +
-  annotate('text', x = c(0), y = c(0.500,0.450), label = c(paste('pseudoR[adj]^2 ==', psuedoR2), paste('AIC ==', aic)), parse=TRUE, size = 8, hjust = 0, vjust = 1)
+        legend.position = "none") 
+summary(lm(predicted ~ pcsubclonal, x))
+
+ggplot(data = x, aes(x = predicted, y = pga)) +
+  geom_line(aes(group = patient), size=0.2, colour = "#003366") +
+  geom_point(fill = "#003366", colour = "#003366", size = 6) +
+  theme(plot.margin = unit(c(t=0,r=0,b=0,l=0), "cm"),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size = 0.5),
+        axis.title = element_text(size=24, colour='black'),
+        axis.text = element_text(size=24, colour='black'),
+        legend.position = "none") 
+summary(lm(predicted ~ pga, x))
+
+ggplot(data = x, aes(x = pcsubclonal, y = pga)) +
+  geom_line(aes(group = patient), size=0.2, colour = "#003366") +
+  geom_point(fill = "#003366", colour = "#003366", size = 6) +
+  theme(plot.margin = unit(c(t=0,r=0,b=0,l=0), "cm"),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size = 0.5),
+        axis.title = element_text(size=24, colour='black'),
+        axis.text = element_text(size=24, colour='black'),
+        legend.position = "none") 
+summary(lm(pcsubclonal ~ pga, x))
+
+
+ggplot(data = x, aes(x = actual, y = pcsubclonal)) +
+  geom_line(aes(group = patient), size=0.2, colour = "#003366") +
+  geom_point(fill = "#003366", colour = "#003366", size = 6) +
+  theme(plot.margin = unit(c(t=0,r=0,b=0,l=0), "cm"),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size = 0.5),
+        axis.title = element_text(size=24, colour='black'),
+        axis.text = element_text(size=24, colour='black'),
+        legend.position = "none") 
+summary(lm(actual ~ pcsubclonal, x))
+
+ggplot(data = x, aes(x = actual, y = pga)) +
+  geom_line(aes(group = patient), size=0.2, colour = "#003366") +
+  geom_point(fill = "#003366", colour = "#003366", size = 6) +
+  theme(plot.margin = unit(c(t=0,r=0,b=0,l=0), "cm"),
+        panel.background = element_blank(),
+        axis.line = element_line(colour = "black", size = 0.5),
+        axis.title = element_text(size=24, colour='black'),
+        axis.text = element_text(size=24, colour='black'),
+        legend.position = "none") 
+summary(lm(actual ~ pga, x))
+
+# whats corr with error------------------
+
+
+
 
 # save --------
 
 saveRDS(predictedIth_test, "~/Documents/CNA/Data/predictedIth_test.rds")
 
 
+
+# how clonal are the bins-------------------------------------------------------
+x <- car.clonality$pcSubclonal
+x <- x[hg19predictors$bin,]
+x$cna <- hg19predictors[match(rownames(x), hg19predictors$bin),7]
+x <- x[!is.na(x$cna),]
+y <- rbind(
+  setNames(object =  x[which(x$cna!="loss"),-3], nm=c("bin","pc","cna")), 
+  setNames(object =  x[which(x$cna!="gain"),-2], nm=c("bin","pc","cna")) )

@@ -113,3 +113,4 @@ hmPlot <- cowplot::plot_grid(hm.legend, hm.list[[i]], ncol = 1, align = 'v', rel
 jpeg('tempfig.jpeg', width = 1000, height = 1000)
 hmPlot
 dev.off()
+

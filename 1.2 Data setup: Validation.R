@@ -52,17 +52,31 @@ for ( j in 1:length(testraw.list)) {
   testabs.list[[j]] <- cbind(testabs.list[[j]], matrix(unlist(abscn), nrow = nrow(testraw.list[[j]])) )
 }
 
-# Assess ploidy and recentre if average CN is 2.8 or more
-testcn.list <- ploidyRecentre(testabs.list, skipcol = 3, multi_cn = TRUE)
+# Assess ploidy and recentre 
+for ( i in 1:length(testabs.list) ) {
+  weights <- testabs.list[[i]][,3] - testabs.list[[i]][,2]
+  sumweight <- sum(weights)
+  
+  for ( j in 4:ncol(testabs.list[[i]]) ) {
+    ploidy <- round(sum(testabs.list[[i]][ ,j]*weights, na.rm = T)/sumweight, 1)
+    
+    if ( ploidy > 2.5 ) {
+      distance <- abs(2.5 - ploidy)
+      print(paste(i, ploidy))
+      testabs.list[[i]][ ,j] <- testabs.list[[i]][ ,j] - distance                
+    }
+    else {next}
+  }
+}
+x <- testabs.list[[1]]
 
 # Bin CN data to match training dataset ONLY IF HG19
-testcnBinned.list <- newAlignBins(bins = car.info$start.stop, cn.list = testcn.list)
-
-# If absolute copy number >=3, its a gain, if <=2 its a loss
+testcnBinned.list <- newAlignBins(bins = car.info$start.stop, cn.list = testabs.list)
 testcnBinned.list <- lapply(testcnBinned.list, function(x) {
-  x[,-c(1:4)] <- ifelse(x[,-c(1:4)] >= 3, 3, ifelse(x[,-c(1:4)] < 2, 1, 2))
+  x <- apply(x, 2, function(x) as.numeric(as.character(x)))
   x
 })
+x <- testcnBinned.list[[1]]
 
 # Rename columns with sampleID and combine all patients into one dataframe
 for ( i in 1:length(testcnBinned.list) ) {
@@ -70,6 +84,26 @@ for ( i in 1:length(testcnBinned.list) ) {
     colnames(testcnBinned.list[[i]])[k] <- paste(i, k-4, sep = '.')
   }
 }
+
+# make dataframe
+testcnBinned.list <- lapply(testcnBinned.list, function(x) {
+  x <- as.data.frame(x)
+  x
+})
+
+# Fill in missing
+x <- testcnBinned.list %>% purrr::reduce(full_join, by = c("chr","start","stop","bin"))
+x <- x[c(hg19predictors$bin,2375,2370,2373), ]
+x <- x[ , colSums(is.na(x)) > 0]
+testcnBinned.list[[1]][2374, -c(1:4)] <- testcnBinned.list[[1]][2375, -c(1:4)]
+testcnBinned.list[[3]][2374, -c(1:4)] <- testcnBinned.list[[3]][2375, -c(1:4)]
+
+# If absolute copy number >=3, its a gain, if <=2 its a loss
+testcnBinned.list <- lapply(testcnBinned.list, function(x) {
+  x[,-c(1:4)] <- ifelse(x[,-c(1:4)] >= 3, 3, ifelse(x[,-c(1:4)] < 2, 1, 2))
+  x <- as.data.frame(x)
+  x
+})
 
 testcnBinned <- testcnBinned.list %>% purrr::reduce(full_join, by = c("chr","start","stop","bin"))
 

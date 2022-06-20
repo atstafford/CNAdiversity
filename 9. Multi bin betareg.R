@@ -113,6 +113,7 @@ beta_52back <- betareg(bin_ITH ~., data = multiReg.in_52back)
 summary(beta_52back, type = "pearson")
 x <- data.frame(vif(beta_52back))
 
+#remove <- c("bin_1413_gain","bin_1112_gain","bin_1083_gain","bin_1173_gain") better model but nothin with survuival by stage
 remove <- c("bin_1413_gain","bin_1418_gain","bin_1112_gain","bin_1173_gain","bin_1083_gain","bin_1085_gain")
 multiReg.in_52backrem <- multiReg.in_52back[ ,colnames(multiReg.in_52back) %!in% remove]
 beta_52backrem <- betareg(bin_ITH ~., data = multiReg.in_52backrem)
@@ -123,7 +124,6 @@ round(AIC(beta_52backrem),2)
 # ASSESS------------------------------------------------------------------------
 # pull predictors
 beta <- beta_52backrem
-multiReg.in <- multiReg.in_52backrem
 
 x <- rownames(data.frame(summary(beta)$coefficients))[-1]
 hg19predictors <- data.frame(bin=as.numeric(str_extract_all(x, "[0-9]+")), cna=str_sub(x,-4,-1))
@@ -136,6 +136,17 @@ hg19predictors$cna[which(hg19predictors$bin %in% hg19predictors$bin[which(duplic
 hg19predictors <- hg19predictors[c(1,3:7,2)]
 hg19predictors <- hg19predictors[!duplicated(hg19predictors),]
 
+multiReg.in <- t(car.raw[,-c(1:3)]) # The input matrix requires data on loss/gain/diploid, with a bin per column
+multiReg.in <- data.frame(apply(multiReg.in, 2, as.character), check.names = FALSE)
+multiReg.in <- data.frame(lapply(multiReg.in, factor, levels=c(2,1,3), labels=c('diploid','loss','gain')), check.names = FALSE)
+rownames(multiReg.in) <- car.info$sampleIDs
+multiReg.in <- multiReg.in[,c(hg19predictors$bin)]
+names(multiReg.in) = paste("bin_", names(multiReg.in), sep="")
+multiReg.in = multiReg.in %>%
+  mutate(across(everything(), as.character))
+multiReg.in <- dummy_cols(multiReg.in, remove_selected_columns = TRUE, remove_first_dummy = TRUE)
+
+
 psuedoR2 <- round(beta$pseudo.r.squared,3)
 loglik <- round(beta$loglik,2)
 aic <- round(AIC(beta),2)
@@ -146,7 +157,7 @@ predictedIth_train <- data.frame(cbind(actualIth_train, predictedIth_train))
 predictedIth_train$type <- 'train'
 
 # Add two labels for plot
-ggplot(data = predictedIth_train, aes(x = actual, y = predicted)) +
+plot <- ggplot(data = predictedIth_train, aes(x = actual, y = predicted)) +
   geom_line(aes(group = patient), size=0.2, colour = "#003366") +
   geom_point(fill = "#003366", colour = "#003366", size = 6) +
   geom_line(aes(x = actual, y = actual), linetype = "dashed") +
@@ -162,7 +173,7 @@ ggplot(data = predictedIth_train, aes(x = actual, y = predicted)) +
         legend.position = "none") +
   annotate('text', x = c(0), y = c(0.500,0.450), label = c(paste('pseudoR[adj]^2 ==', psuedoR2), paste('AIC ==', aic)), parse=TRUE, size = 8, hjust = 0, vjust = 1)
 
-jpeg('tempfig.jpeg', width = 1000, height = 1000)
+jpeg('tempfig.jpeg', width = 750, height = 750)
 plot
 dev.off()
 
@@ -172,4 +183,34 @@ saveRDS(representitive.bins, "~/Documents/CNA/Data/representitive.bins.rds")
 saveRDS(beta_52backrem, "~/Documents/CNA/Data/beta_52backrem.rds")
 saveRDS(hg19predictors, "~/Documents/CNA/Data/hg19predictors.rds")
 saveRDS(predictedIth_train, "~/Documents/CNA/Data/predictedIth_train.rds")
+saveRDS(beta_52back, "~/Documents/CNA/Data/beta_52back.rds")
+
+
+
+# add coeffs to hg19 table
+beta <- beta_52backrem
+
+x <- rownames(data.frame(summary(beta)$coefficients))[-1]
+hg19predictors <- data.frame(bin=as.numeric(str_extract_all(x, "[0-9]+")), cna=str_sub(x,-4,-1))
+hg19predictors <- merge(unique(hg19predictors), car.info$start.stop)
+hg19predictors$cluster <- candidate.bins[match(hg19predictors$bin, candidate.bins$bin), 11] 
+x <- car.clonality$pcSubclonal
+hg19predictors$pcSubclonal <- NA
+for ( i in 1:nrow(hg19predictors) ) {
+  if ( hg19predictors$cna[i]=="gain" ) {
+    bin <- hg19predictors$bin[i]
+    hg19predictors$pcSubclonal[i] <- x$gain[which(x$bin==bin)]
+  } else if ( hg19predictors$cna[i]=="loss" ) {
+    bin <- hg19predictors$bin[i]
+    hg19predictors$pcSubclonal[i] <- x$loss[which(x$bin==bin)]
+  }
+}
+hg19predictors$pcSubclonal <- round(hg19predictors$pcSubclonal, 2)
+
+x <- data.frame(summary(beta, type = "pearson")$coefficients$mean[,1])
+x$effect <- "-"
+x$effect[which(x$summary.beta..type....pearson...coefficients.mean...1.>0)] <- "+"
+
+hg19predictors$effect <- NA
+hg19predictors$effect <- x
 

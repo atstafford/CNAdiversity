@@ -3,40 +3,40 @@
 # Prepare input for prediction
 
 # Transpose as input table requires cols=bins
-TCGA.input <- t(COADbinned[,-c(1:3)])
+TCGA.input <- t(READbinned[,-c(1:3)])
 
 # Convert matrix data to character then factor
 TCGA.input <- data.frame(apply(TCGA.input, 2, as.character), check.names = FALSE)
 TCGA.input <- data.frame(lapply(TCGA.input, factor, levels=c(2,1,3), labels=c('diploid','loss','gain')), check.names = FALSE)
-rownames(TCGA.input) <- TCGA.info$patientIDs
+rownames(TCGA.input) <- READ.info$patientIDs
 
 names(TCGA.input) = paste("bin_", names(TCGA.input), sep="")
 TCGA.input <- dummy_cols(TCGA.input, remove_selected_columns = TRUE, remove_first_dummy = TRUE)
-rownames(TCGA.input) <- TCGA.info$sampleIDs
+rownames(TCGA.input) <- READ.info$sampleIDs
 
 # Predict using step.model
 TCGA.predict <- data.frame(TCGA_barcode = substr(rownames(TCGA.input),1,12), predictedITH = predict(beta_52backrem, TCGA.input))
 
 # Add predicted ITH back into COAD_clinical
-COAD_clinical$ITH <- TCGA.predict[match(COAD_clinical$TCGA_barcode, TCGA.predict$TCGA_barcode), 2]
+READ_clinical$ITH <- TCGA.predict[match(READ_clinical$TCGA_barcode, TCGA.predict$TCGA_barcode), 2]
 
 # Keep only those samples whose ITH could be predicted
-COAD_clinical <- COAD_clinical[!is.na(COAD_clinical$ITH),]
+READ_clinical <- READ_clinical[!is.na(READ_clinical$ITH),]
 
 # Mark those patients that didnt have a CNA in any of the predictive bins
-COAD_clinical$intercept <- "no"
-COAD_clinical$intercept[which(COAD_clinical$ITH==coef(beta_52backrem)["(Intercept)"])] <- "yes"
+READ_clinical$intercept <- "no"
+READ_clinical$intercept[which(READ_clinical$ITH==coef(beta_52backrem)["(Intercept)"])] <- "yes"
 
 # Remove samples missing stage data
-COAD_survival <- COAD_clinical[which(COAD_clinical$stage!="'--"),]
+READ_survival <- READ_clinical[which(READ_clinical$stage!="'--"),]
 
 # Keep only MSS
-COAD_survival <- COAD_survival[which(COAD_survival$MSI=="MSS"),]
+#READ_survival <- READ_clinical[which(READ_clinical$MSI=="MSS"),]
 
 # ITH per stage ----------------------------------------------------------------
 # Perform chi squared test
-chisq2 <- chisq.test(table(COAD_survival$divGroup2, COAD_survival$stage))
-chisq4 <- chisq.test(table(COAD_survival$divGroup4, COAD_survival$stage))
+chisq2 <- chisq.test(table(READ_survival$divGroup2, COAD_survival$stage))
+chisq4 <- chisq.test(table(READ_survival$divGroup4, COAD_survival$stage))
 corrplot(chisq2$residuals, is.cor = FALSE)
 corrplot(chisq4$residuals, is.cor = FALSE)
 chisq2$p.value
@@ -74,26 +74,26 @@ dev.off()
 
 # Calculate serial time between death and censor
 #add censore
-COAD_survival$OS_cens <- 0
-COAD_survival$OS_cens[which(COAD_survival$vital_status=="Dead")] <- 1
+READ_survival$OS_cens <- 0
+READ_survival$OS_cens[which(READ_survival$vital_status=="Dead")] <- 1
 
 #manual edits for those who dies same year as diag
-COAD_survival$days_to_death <- as.numeric(as.character(COAD_survival$days_to_death))
-COAD_survival$days_to_death[which(COAD_survival$TCGA_barcode=="TCGA-AA-3852")] <- 182
-COAD_survival$days_to_death[which(COAD_survival$TCGA_barcode=="TCGA-AA-3845")] <- 182
-COAD_survival$days_to_death[which(COAD_survival$TCGA_barcode=="TCGA-AA-3850")] <- 182
-COAD_survival <- COAD_survival[-which(COAD_survival$days_to_death==1 | COAD_survival$days_to_death==0),]
+READ_survival$days_to_death <- as.numeric(as.character(READ_survival$days_to_death))
+#READ_survival$days_to_death[which(READ_survival$TCGA_barcode=="TCGA-AA-3852")] <- 182
+#READ_survival$days_to_death[which(READ_survival$TCGA_barcode=="TCGA-AA-3845")] <- 182
+#READ_survival$days_to_death[which(READ_survival$TCGA_barcode=="TCGA-AA-3850")] <- 182
+READ_survival <- READ_survival[-which(READ_survival$days_to_death==1 | READ_survival$days_to_death==0),]
 
-COAD_survival$days_to_birth <- as.numeric(as.character(COAD_survival$days_to_birth))
+READ_survival$days_to_birth <- as.numeric(as.character(READ_survival$days_to_birth))
 #COAD_survival <- COAD_survival[!is.na(COAD_survival$days_to_birth),]
-COAD_survival$OS_time <- NA
+READ_survival$OS_time <- NA
 
-for (i in 1:nrow(COAD_survival)) {
-  if (COAD_survival$OS_cens[i] == 0) {
-    COAD_survival$OS_time[i] <- COAD_survival$age_at_index - (COAD_survival$year_of_diagnosis - COAD_survival$year_of_birth)
+for (i in 1:nrow(READ_survival)) {
+  if (READ_survival$OS_cens[i] == 0) {
+    READ_survival$OS_time[i] <- READ_survival$age_at_index - (READ_survival$year_of_diagnosis - READ_survival$year_of_birth)
   }
-  else if (COAD_survival$OS_cens[i] == 1) {
-    COAD_survival$OS_time[i] <- COAD_survival$days_to_death[i]/365
+  else if (READ_survival$OS_cens[i] == 1) {
+    READ_survival$OS_time[i] <- READ_survival$days_to_death[i]/365
   }
 }
 
@@ -101,42 +101,17 @@ for (i in 1:nrow(COAD_survival)) {
 # Split into groups --------------------------------------------------------------
 
 # Split patients into 2 groups based on ITH
-COAD_survival$divGroup2 <- 'low' 
-COAD_survival$divGroup2[COAD_survival$ITH>= median(COAD_survival$ITH) ] <- "high"
+READ_survival$divGroup4 <- ntile(READ_survival$ITH, 4)
+READ_survival$divGroup3 <- "med"
+READ_survival$divGroup3[which(READ_survival$divGroup4==4)] <- "top25"
+READ_survival$divGroup3[which(READ_survival$divGroup4==1)] <- "bottom25"
 
-COAD_survival$divGroup4 <- ntile(COAD_survival$ITH, 4)
-COAD_survival$divGroup3 <- "med"
-COAD_survival$divGroup3[which(COAD_survival$divGroup4==4)] <- "top25"
-COAD_survival$divGroup3[which(COAD_survival$divGroup4==1)] <- "bottom25"
-
-COAD_survival$divGroup2of3 <- "top75"
-COAD_survival$divGroup2of3[which(COAD_survival$divGroup4==1)] <- "bot25"
-
-COAD_survival$'75x25' <- "bottom75"
-COAD_survival$'75x25'[which(COAD_survival$divGroup4==4)] <- "top25"
-
-COAD_survival$div30 <- ntile(COAD_survival$ITH, 3)
-COAD_survival$div30[which(COAD_survival$div30!=1)] <- "top66"
-COAD_survival$div30[which(COAD_survival$div30==1)] <- "bottom33"
-
-COAD_survival$div40x60 <- ntile(COAD_survival$ITH, 5)
-COAD_survival$div40x60[which(COAD_survival$div40x60==1 | COAD_survival$div40x60==2)] <- "bottom40"
-COAD_survival$div40x60[which(COAD_survival$div40x60==3 | COAD_survival$div40x60==4 | COAD_survival$div40x60==5)] <- "top60"
-
-COAD_survival$divSGroup2 <- "low"
-for (i in 1:length(unique(COAD_survival$stage))) {
-  stage <- unique(COAD_survival$stage)[i]
-  median <- median(COAD_survival$ITH[which(COAD_survival$stage==stage)])
-  patients <- COAD_survival$TCGA_barcode[which(COAD_survival$stage==stage & COAD_survival$ITH>=median)]
-  COAD_survival$divSGroup2[which(COAD_survival$TCGA_barcode %in% patients)] <- "high"
-}
-
-cut <- surv_cutpoint(COAD_survival, time = "OS_time", event = "OS_cens", variables = "ITH")
+cut <- surv_cutpoint(READ_survival, time = "OS_time", event = "OS_cens", variables = "ITH")
 res.cat <- surv_categorize(cut)
-COAD_survival$optim <- res.cat$ITH
+READ_survival$optim <- res.cat$ITH
 
-length(COAD_survival$ITH[which(COAD_survival$optim=="low")])/nrow(COAD_survival)
-length(COAD_survival$ITH[which(COAD_survival$optim=="high")])/nrow(COAD_survival)
+length(READ_survival$ITH[which(READ_survival$optim=="low")])/nrow(READ_survival)
+length(READ_survival$ITH[which(READ_survival$optim=="high")])/nrow(READ_survival)
 
 # optim  ---------------------------------
 chooseCut <- COAD_survival$optim
@@ -179,22 +154,25 @@ plot <- annotate_figure(plot,
                         bottom = text_grob('Time (years)', size = 24))
 plot
 # top and bottom 25% -----
-z <- COAD_survival[which(COAD_survival$divGroup3!="med"),]
-chooseCut <- z$divGroup3
+z <- READ_survival
+z$COADcut <- "med"
+z$COADcut[which(z$ITH<0.086)] <-  "bot25"
+z$COADcut[which(z$ITH>0.317)] <- "top25"
+chooseCut <- z$COADcut
 
 legend <- as_ggplot(cowplot::get_legend(ggplot(data.frame(color=c("Top 25%","Bottom 25%"),x=c(1,2), y=c(1,2))) +
                                           geom_bar(aes(x=x, y=y, fill=(color)), stat="identity") + 
                                           scale_fill_manual(values = c("#330099","#CC0033")) +
-  guides(color = guide_legend(direction = 'horizontal', label.position = "left", label.hjust = 1)) +
-  theme(plot.margin = unit(c(t=-100,r=0,b=-100,l=0), "cm"),
-        legend.position = "bottom",legend.direction="horizontal",
-        legend.title = element_blank(),
-        legend.margin = margin(grid::unit(c(t=-100,r=0,b=-100,l=0),"cm")),
-        legend.text = element_text(size=24, colour='black'),
-        legend.key.height = grid::unit(0.8,"cm"),
-        legend.key.width = grid::unit(1.4,"cm"))  ))
+                                          guides(color = guide_legend(direction = 'horizontal', label.position = "left", label.hjust = 1)) +
+                                          theme(plot.margin = unit(c(t=-100,r=0,b=-100,l=0), "cm"),
+                                                legend.position = "bottom",legend.direction="horizontal",
+                                                legend.title = element_blank(),
+                                                legend.margin = margin(grid::unit(c(t=-100,r=0,b=-100,l=0),"cm")),
+                                                legend.text = element_text(size=24, colour='black'),
+                                                legend.key.height = grid::unit(0.8,"cm"),
+                                                legend.key.width = grid::unit(1.4,"cm"))  ))
 
-hist <- ggplot(COAD_survival, aes(round(ITH,2), fill = divGroup3)) + 
+hist <- ggplot(z, aes(round(ITH,2), fill = COADcut)) + 
   geom_histogram(binwidth = 0.005) +
   xlab("Predicted CNA diversity") +
   scale_fill_manual(values = c("#330099","#CCCCCC","#CC0033")) +
@@ -203,18 +181,20 @@ hist <- ggplot(COAD_survival, aes(round(ITH,2), fill = divGroup3)) +
         axis.line = element_line(colour = "black", size = 0.5),axis.title = element_text(size=24, colour='black'))
 hist <- plot_grid(legend, hist, ncol=1, rel_heights = c(1,5))
 
-title <- paste(paste("Pan-stage ","(n=", nrow(z),")" ,sep = ""),
-      paste("\nhigh=", nrow(z[which(z$divGroup3=="top25"),])," low=", nrow(z[which(z$divGroup3=="bottom25"),]), sep = ""))
+z <-z[which(z$COADcut!="med"),]
 
-fit <- survfit(Surv(OS_time, OS_cens) ~ chooseCut, data = z)
+title <- paste(paste("Pan-stage ","(n=", nrow(z),")" ,sep = ""),
+               paste("\nhigh=", nrow(z[which(z$divGroup3=="top25"),])," low=", nrow(z[which(z$divGroup3=="bottom25"),]), sep = ""))
+
+fit <- survfit(Surv(OS_time, OS_cens) ~ COADcut, data = z)
 panOS <- ggsurvplot(fit, data = z, pval = TRUE, legend="none", palette = c("#330099","#CC0033"),
-                   font.main=24, font.x=24, font.y=24, font.tickslab=24, font.legend=24, pval.size=9, title=title,
-                   ylab="Survival Probability", xlab="Time (years)")
+                    font.main=24, font.x=24, font.y=24, font.tickslab=24, font.legend=24, pval.size=9, title=title,
+                    ylab="Survival Probability", xlab="Time (years)")
 
 plot1 <- plot_grid(hist, panOS$plot, nrow = 1)
 
 
-x <- data.frame(table(z$stage, chooseCut))
+x <- data.frame(table(z$stage, z$COADcut))
 stage <- as.character(unique(x$Var1))
 n <- list()
 for (i in 1:length(stage)) {
@@ -226,7 +206,7 @@ plot.list <- list()
 for (i in 1:length(stage)) {
   surv_object <- Surv(time = z$OS_time[which(z$stage==stage[i])], 
                       event = z$OS_cens[which(z$stage==stage[i])])
-  fit <- survfit(surv_object ~ divGroup3, data = z[which(z$stage==stage[i]),])
+  fit <- survfit(surv_object ~ COADcut, data = z[which(z$stage==stage[i]),])
   plot.list[[i]] <- ggsurvplot(fit, data = z[which(z$stage==stage[i]),], pval = TRUE, 
                                title=n[i], legend="none", palette = c("#330099","#CC0033"),
                                font.main=24, font.x=NA, font.y=NA, font.tickslab=24, font.legend=24, pval.size=9)
@@ -234,32 +214,21 @@ for (i in 1:length(stage)) {
 
 plot2 <- plot_grid(plot.list[[1]]$plot, plot.list[[2]]$plot, plot.list[[3]]$plot, plot.list[[4]]$plot, nrow = 2)
 plot2 <- annotate_figure(plot2, 
-                        left = text_grob('Survival probability', rot = 90, size = 24),
-                        bottom = text_grob('Time (years)', size = 24))
+                         left = text_grob('Survival probability', rot = 90, size = 24),
+                         bottom = text_grob('Time (years)', size = 24))
 
 plot <- plot_grid(plot1, plot2, ncol = 1, rel_widths = c(1,1), rel_heights = c(1,2))
 
-jpeg('tempfig.jpeg', width = 1000, height = 1300, res = 330)
+jpeg('tempfig.jpeg', width = 1000, height = 1300)
 plot
 dev.off()
 
 # Progression -------------------------
 TCGA_clinical <- read_excel("~/Documents/CNA/Data/TCGA/survival.dijk.xlsx", sheet = 66, skip = 1)
-z$PFI <- unlist(TCGA_clinical[match(z$TCGA_barcode, str_sub(TCGA_clinical$Samplename,1,str_length(TCGA_clinical$Samplename)-16)),c(20)])
-z$PFI_event <- unlist(TCGA_clinical[match(z$TCGA_barcode, str_sub(TCGA_clinical$Samplename,1,str_length(TCGA_clinical$Samplename)-16)),c(21)])
+z$PFI <- TCGA_clinical[match(z$TCGA_barcode, str_sub(TCGA_clinical$Samplename,1,str_length(TCGA_clinical$Samplename)-16)),c(20)]
+z$PFI_event <- TCGA_clinical[match(z$TCGA_barcode, str_sub(TCGA_clinical$Samplename,1,str_length(TCGA_clinical$Samplename)-16)),c(21)]
 
 chooseCut <- z$divGroup3
-
-title <- paste(paste("Pan-stage ","(n=", nrow(z),")" ,sep = ""),
-               paste("\nhigh=", nrow(z[which(z$divGroup3=="top25"),])," low=", nrow(z[which(z$divGroup3=="bottom25"),]), sep = ""))
-
-fit <- survfit(Surv(PFI, PFI_event) ~ chooseCut, data = z)
-panOS <- ggsurvplot(fit, data = z, pval = TRUE, legend="none", palette = c("#330099","#CC0033"),
-                    font.main=24, font.x=24, font.y=24, font.tickslab=24, font.legend=24, pval.size=9, title=title,
-                    ylab="Survival Probability", xlab="Time (years)")
-
-plot1 <- plot_grid(panOS$plot,NULL, nrow = 1)
-
 
 x <- data.frame(table(z$stage, chooseCut))
 stage <- as.character(unique(x$Var1))
@@ -271,24 +240,36 @@ for (i in 1:length(stage)) {
 }
 plot.list <- list()
 for (i in 1:length(stage)) {
-  surv_object <- Surv(time = z$PFI[which(z$stage==stage[i])], 
-                      event = z$PFI_event[which(z$stage==stage[i])])
+  surv_object <- Surv(time = z$prog$PFI[which(z$stage==stage[i])], 
+                      event = z$prog$PFI_event[which(z$stage==stage[i])])
   fit <- survfit(surv_object ~ divGroup3, data = z[which(z$stage==stage[i]),])
   plot.list[[i]] <- ggsurvplot(fit, data = z[which(z$stage==stage[i]),], pval = TRUE, 
-                               title=n[i], legend="none", palette = c("#330099","#CC0033"),
+                               title=n[i], legend="none",
                                font.main=24, font.x=NA, font.y=NA, font.tickslab=24, font.legend=24, pval.size=9)
 }
+legend <- get_legend(ggsurvplot(fit, data = z[which(z$stage==stage[i]),])$plot)
+plot <- plot_grid(plot.list[[1]]$plot, plot.list[[2]]$plot, plot.list[[3]]$plot, plot.list[[4]]$plot, nrow = 2)
+plot <- plot_grid(legend, plot, nrow = 2, rel_heights = c(1,10))
+plot <- annotate_figure(plot, 
+                        left = text_grob('Survival probability', rot = 90, size = 24),
+                        bottom = text_grob('Time (years)', size = 24))
+plot
 
-plot2 <- plot_grid(plot.list[[1]]$plot, plot.list[[2]]$plot, plot.list[[3]]$plot, plot.list[[4]]$plot, nrow = 2)
-plot2 <- annotate_figure(plot2, 
-                         left = text_grob('Progression probability', rot = 90, size = 24),
-                         bottom = text_grob('Time (years)', size = 24))
+fit <- survfit(Surv(time = z$prog$PFI, event = z$prog$PFI_event) ~ chooseCut, data = z)
+plot <- ggsurvplot(fit, data = z, pval = TRUE, legend="none",
+                   font.main=24, font.x=NA, font.y=NA, font.tickslab=24, font.legend=24, pval.size=9)
+hist <- ggplot(z, aes(ITH, fill = chooseCut)) + 
+  geom_histogram(binwidth = 0.001) +
+  #scale_fill_manual(values = c("red", "blue"), name = "ITH", breaks = c("high","low")) +
+  theme(panel.background = element_blank(), legend.position = "top",axis.text = element_text(size=24, colour='black'),
+        axis.line = element_line(colour = "black", size = 0.5),axis.title = element_text(size=24, colour='black'))
 
-plot <- plot_grid(plot1, plot2, ncol = 1, rel_widths = c(1,1), rel_heights = c(1,2))
+plot <- plot_grid(hist , plot$plot)
 
-jpeg('tempfig.jpeg', width = 1000, height = 1300)
+jpeg('tempfig.jpeg', width = 1000, height = 1000)
 plot
 dev.off()
+
 
 # location in bowel-------------------------
 y <- COAD_survival[c(2,23,29)]
